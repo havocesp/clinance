@@ -1,2 +1,7 @@
 .idea
 venv
+.pypirc
+clinance/__init__.pyc
+clinance/__pycache__/
+doc/
+test/

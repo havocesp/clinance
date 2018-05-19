@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-import pandas as pd
-import defopt
+# -*- coding:utf-8 -*-
 import os
-from tabulate import tabulate
-from panance import Panance
+import sys
+
+import defopt
 from finta import TA
-from clinance import __version__
+from panance import Panance
+from tabulate import tabulate
 
-volume_headers = ['Symbol', 'Vol. 0', 'Vol. 1', 'Vol. 2', 'Close']
+import clinance
 
-key, secret = os.getenv('BINANCE_KEY'), os.getenv('BINANCE_SECRET')
-api = Panance() if any((key is None, secret is None, not len(key), not len(secret))) else Panance(key, secret)
+# from commands import cost, cancel, balance, volume, buy, stoploss, sell, depth, profit, open
+
+
+# __all__ = ['main']
+
+VOLUME_HEADERS = ['Symbol', 'Vol. 0', 'Vol. 1', 'Vol. 2', 'Close']
+DEPTH_HEADERS = ['Ask', 'Amount', 'Bid', 'Amount']
+table_config = dict(stralign='right', numalign='right', floatfmt='9.8f')
 
 
 def sell(symbol, amount, price):
@@ -23,6 +30,7 @@ def sell(symbol, amount, price):
     :param price:  order sell price ("bid" or "ask" also accepted)
     :type price: str or float
     """
+    global api
     print(api.limit_sell(symbol, amount, price))
 
 
@@ -37,6 +45,7 @@ def buy(symbol, amount, price):
     :type price: str or float
 
     """
+    global api
     print(api.limit_buy(symbol, amount, price))
 
 
@@ -56,6 +65,7 @@ def cost(symbol):
 
     :param str symbol: trade pair (example: BTC/USDT)
     """
+    global api
     costs = api.get_weighted_average_cost(symbol=symbol)
     print('[{}] WAvg. Cost: {:12.8f}'.format(symbol, costs))
 
@@ -66,6 +76,7 @@ def open(symbol):
 
     :param str symbol: trade pair (example: BTC/USDT)
     """
+    global api
     open_orders = api.fetch_open_orders(symbol=symbol)
     result = list()
     if len(open_orders):
@@ -82,20 +93,20 @@ def balance(coin=None):
 
     :param str coin: if set it will work as balance a filter (example: BTC) (default None)
     """
-
+    global api
     print(api.get_balances(coin=coin.upper()) if coin else api.get_balances())
 
 
-def stoploss(symbol, factor=1.5, current: bool = False):
+def stoploss(symbol, factor=1.5, current=False):
     """
     Get ATR based stop loss price for a symbol.
 
     :param str symbol: trade pair (example: BTC/USDT)
     :param float factor: ATR factor (default 1.5)
-    :param current: if True stop loss will be calculated from current value instead last buy price
+    :param bool current: if True stop loss will be calculated from current value instead last buy price
     """
+    global api
     atr = TA.ATR(api.get_ohlc(symbol, '15m'))
-    # print(atr.values[-1])
     last_buy_price = 0.0
     if not current:
         for l in api._LIMITS:
@@ -108,7 +119,6 @@ def stoploss(symbol, factor=1.5, current: bool = False):
     atr_value = atr.values[-1]
     atr_variation = float(factor * atr_value)
     print('[{: <9}] Cost: {:12.8f}, StopLoss: {:12.8f}'.format(symbol, last_buy_price, last_buy_price - atr_variation))
-    # print(api.get_balances(coin=coin.upper()) if coin else api.get_balances())
 
 
 def profit(coin):
@@ -117,6 +127,7 @@ def profit(coin):
 
     :param str coin: currency (example: BTC)
     """
+    global api
     print('[{}] Profit: {:+10.8f}, Cost:  {:10.8f}'.format(coin.upper(), *api.get_profit(coin)))
 
 
@@ -127,14 +138,15 @@ def depth(symbol, limit=10):
     :param str symbol: trade pair (example: BTC/USDT)
     :param int limit: max rows to retrieve
     """
+    global api
     ob = api.get_depth(symbol, limit=limit)
     base, quote = symbol.split('/')
 
     num_format = '9.8f'
     if 'USD' in quote:
         num_format = '9.3f'
-    print(tabulate(ob.values, headers=['Ask', 'Amount', 'Bid', 'Amount'], stralign='right', numalign='right',
-                   floatfmt=num_format, disable_numparse=[1, 3]))
+    table_config.update(floatfmt=num_format)
+    print(tabulate(ob.values, headers=DEPTH_HEADERS, disable_numparse=[1, 3], **table_config))
 
 
 def volume(limit=10, timeframe='1m', exchange='BTC'):
@@ -145,15 +157,19 @@ def volume(limit=10, timeframe='1m', exchange='BTC'):
     :param str timeframe: time frame used. Accepted values: 1m, 3m, 5m, 15m, 1h, 2h, 4h, 1d (default 1m)
     :param str exchange: exchange used (default BTC)
     """
-    tickers = api.get_tickers()  # type: pd.DataFrame
+    global api
+    tickers = api.get_tickers()
 
     filtered = tickers.T.select(lambda v: v.split('/')[1] in [exchange]).sort_values('baseVolume', ascending=False).T
 
-    symbols = [*filtered.T.keys()][:limit]
+    symbols = [k for k in filtered.T.keys()][:limit]
     top_symbols = filtered.T[symbols].T
     table_data = list()
+
     if timeframe is not None and timeframe not in '1m':
         tf = timeframe
+    else:
+        tf = '1m'
 
     for ts in top_symbols:
 
@@ -166,13 +182,17 @@ def volume(limit=10, timeframe='1m', exchange='BTC'):
         vol2 = ohlc.qvolume[-3]
         close = ohlc.close.apply(lambda s: '{:9.8f}'.format(s))
         table_data.append([ts, vol0, vol1, vol2, close[-1]])
-    print(tabulate(table_data, headers=volume_headers, numalign='right', floatfmt='.3f', disable_numparse=[4]))
+    print(tabulate(table_data, headers=VOLUME_HEADERS, numalign='right', floatfmt='.3f', disable_numparse=[4]))
 
     return filtered.T[symbols]
 
 
-def main(args):
-    global verbose, json, csv
+def main():
+    global api, verbose, json, csv
+    args = [arg for arg in sys.argv[1:]] if len(sys.argv[1:]) else []
+
+    key, secret = os.getenv('BINANCE_KEY'), os.getenv('BINANCE_SECRET')
+    api = Panance() if any((key is None, secret is None, not len(key), not len(secret))) else Panance(key, secret)
     json, csv, verbose = False, False, False
     verbose = '--verbose' in args or '-v' in args
     version = '--version' in args or '-V' in args
@@ -181,14 +201,19 @@ def main(args):
         json = '--json' in args
 
     if version:
-        print(__version__)
+        print(clinance.__version__)
         return 0
     else:
-        defopt.run(cost, depth, volume, profit, stoploss, balance, buy, sell, cancel, open)
+        defopt.run(
+            cost,
+            depth,
+            volume,
+            profit,
+            stoploss,
+            balance,
+            buy,
+            sell,
+            cancel,
+            open
+        )
         return 0
-
-
-if __name__ == '__main__':
-    import sys
-
-    sys.exit(main(sys.argv[1:]))

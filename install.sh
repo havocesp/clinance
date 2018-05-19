@@ -27,9 +27,12 @@ pip install -U git+https://github.com/havocesp/panance || pip3 install -U git+ht
 pip install -U git+https://github.com/havocesp/finta || pip3 install -U git+https://github.com/havocesp/finta
 pip install -U tabulate || pip3 install -U tabulate
 pip install -U defopt || pip3 install -U defopt
+echo "Installing clinance ..."
+pip install -U . || pip3 install -U .
 echo "DONE"
-
 if declare | grep -iq -E  ^deactivate
 then
     deactivate &> /dev/null
 fi
+
+
