@@ -6,9 +6,10 @@ A command line interface (CLI) client for Binance cryptocurrency exchange.
  * __License__: MIT
 
 # TODO
- [ ] A command for check Binance availability
- [ ] A command to retreive Binance server datetime
- [ ] Design a settings file creation and implent it in application
+ * [ ] Subcommand for check Binance availability.
+ * [ ] Subcommand to retreive Binance server datetime.
+ * [ ] Design a settings file and implent a read routine.
+ 
 # ChangeLog
 
 ## Version 0.1.0
