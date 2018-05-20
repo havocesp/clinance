@@ -10,11 +10,6 @@ from tabulate import tabulate
 
 import clinance
 
-# from commands import cost, cancel, balance, volume, buy, stoploss, sell, depth, profit, open
-
-
-# __all__ = ['main']
-
 VOLUME_HEADERS = ['Symbol', 'Vol. 0', 'Vol. 1', 'Vol. 2', 'Close']
 DEPTH_HEADERS = ['Ask', 'Amount', 'Bid', 'Amount']
 table_config = dict(stralign='right', numalign='right', floatfmt='9.8f')
