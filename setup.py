@@ -16,13 +16,15 @@ setup(
     keywords='binance cli terminal console client trading altcoin exchange finance market bitcoin cryptocurrency cryptocurrencies crypto-currencies crypto-currency',
     author=__author__,
     author_email='',
-    dependency_links=['http://github.com/havocesp/finta', 'http://github.com/havocesp/panance'],
+    dependency_links=[
+        'http://github.com/havocesp/finta',
+        'http://github.com/havocesp/panance'],
     long_description='A command line interface (CLI) client for Binance cryptocurrency exchange.',
     description='Binance client from CLI.',
     classifiers=[
         'Development Status :: 4 - Beta',
-        'Intended Audience :: Binance users',
-        'Topic :: Software Development :: Open source Binance interface from CLI',
+        #        'Intended Audience :: Developers',
+        #        'Topic :: Software Development :: Open source Binance interface from CLI',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',

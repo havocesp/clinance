@@ -1,7 +1,8 @@
-.idea
-venv
+.idea/
+venv/*
 .pypirc
-clinance/__init__.pyc
-clinance/__pycache__/
-doc/
-test/
+clinance/*.pyc
+clinance.egg-info/
+clinance/__pycache__
+build/
+dist/
