@@ -1,20 +1,35 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding:utf-8 -*-
+from __future__ import print_function
+
 import os
 import sys
+import time as tm
+from collections import OrderedDict
 
-import defopt
-from finta import TA
-from panance import Panance
+import begin
+import pandas as pd
+import pantulipy as ta
+import term as trm
+from panance import Panance, _LIMITS
 from tabulate import tabulate
 
-import clinance
+if not len(sys.argv[1:]):
+    sys.argv.append('-h')
 
-VOLUME_HEADERS = ['Symbol', 'Vol. 0', 'Vol. 1', 'Vol. 2', 'Close']
+OHLCV_FIELDS = ['real', 'open', 'high', 'low', 'close', 'volume']
+
+echo = print if sys.platform in 'win32' else trm.writeLine
+
+VOLUME_HEADERS = ['Symbol', 'Last Vol.', 'Prev. Vol.', 'Close']
 DEPTH_HEADERS = ['Ask', 'Amount', 'Bid', 'Amount']
-table_config = dict(stralign='right', numalign='right', floatfmt='9.8f')
+TABLE_CONFIG = dict(stralign='right', numalign='right', floatfmt='9.8f')
+
+help_fmt = begin.formatters.compose(begin.formatters.RawDescription, begin.formatters.ArgumentDefaults)
 
 
+@begin.subcommand
+@begin.convert(amount=float, price=float)
 def sell(symbol, amount, price):
     """
     Place a limit sell order.
@@ -25,10 +40,12 @@ def sell(symbol, amount, price):
     :param price:  order sell price ("bid" or "ask" also accepted)
     :type price: str or float
     """
-    global api
-    print(api.limit_sell(symbol, amount, price))
+
+    echo(api.limit_sell(symbol, amount, price))
 
 
+@begin.subcommand
+@begin.convert(amount=float, price=float)
 def buy(symbol, amount, price):
     """
     Place a limit buy order.
@@ -38,40 +55,41 @@ def buy(symbol, amount, price):
     :type amount: str or float
     :param price:  order buy price ("bid" or "ask" also accepted)
     :type price: str or float
-
     """
-    global api
-    print(api.limit_buy(symbol, amount, price))
+    echo(api.limit_buy(symbol, amount, price))
 
 
+@begin.subcommand
+@begin.convert(order_id=int)
 def cancel(symbol, order_id):
     """
     Cancel an order by id.
 
-    :param str symbol: trade pair (example: BTC/USDT)
+    :param str symbol:
     :param int order_id: the order id
     """
-    print(api.cancel_order(order_id, symbol))
+    echo(api.cancel_order(order_id, symbol))
 
 
+@begin.subcommand
 def cost(symbol):
     """
     Get weighted average cost for a symbol.
 
     :param str symbol: trade pair (example: BTC/USDT)
     """
-    global api
     costs = api.get_weighted_average_cost(symbol=symbol)
-    print('[{}] WAvg. Cost: {:12.8f}'.format(symbol, costs))
+    echo('[{}] Cost: {:12.8f}'.format(symbol, costs))
 
 
+@begin.subcommand
 def open(symbol):
     """
     Get all open orders for a symbol.
 
     :param str symbol: trade pair (example: BTC/USDT)
     """
-    global api
+
     open_orders = api.fetch_open_orders(symbol=symbol)
     result = list()
     if len(open_orders):
@@ -79,20 +97,34 @@ def open(symbol):
             del r['info'], r['lastTradeTimestamp'], r['fee'], r['symbol'], r['timestamp']
             r['date'] = r.pop('datetime').replace('T', ' ').split('.')[0]
             result.append(r)
-    print(tabulate(result, headers='keys'))
+    echo(tabulate(result, headers='keys'))
 
 
-def balance(coin=None):
+@begin.subcommand
+def balance(coin=None, detailed='n'):
     """
     Get all open orders for a symbol.
 
     :param str coin: if set it will work as balance a filter (example: BTC) (default None)
+    :param str detailed: set to "y" to get a detailed view of your wallet (default "n")
     """
-    global api
-    print(api.get_balances(coin=coin.upper()) if coin else api.get_balances())
+
+    coin = str(coin).upper() if not str(coin).isupper() else str(coin)
+    detailed = str(detailed).lower()
+    params = dict()
+    if 'y' in detailed:
+        params = dict(detailed=True)
+    if coin not in 'NONE':
+        params.update(coin=coin)
+    balance = api.get_balances(**params)  # type: pd.DataFrame
+    balance.index = pd.Index(data=balance.index.map(lambda s: '[' + s.title() + ']'), name='Status')
+
+    echo(tabulate(balance.sort_index().to_records(index=True), headers='keys'))
 
 
-def stoploss(symbol, factor=1.5, current=False):
+@begin.subcommand
+@begin.convert(factor=float)
+def stoploss(symbol, factor=1.5, period=14, current=False):
     """
     Get ATR based stop loss price for a symbol.
 
@@ -100,115 +132,159 @@ def stoploss(symbol, factor=1.5, current=False):
     :param float factor: ATR factor (default 1.5)
     :param bool current: if True stop loss will be calculated from current value instead last buy price
     """
-    global api
-    atr = TA.ATR(api.get_ohlc(symbol, '15m'))
+    ohlc = api.get_ohlc(symbol, '15m')
+    atr = ta.atr(ohlc, period)
     last_buy_price = 0.0
+
     if not current:
-        for l in api._LIMITS:
+        for l in _LIMITS:
             last_buy = api.get_user_trades(symbol, l, 'buy')
+
             if not last_buy.empty:
                 last_buy_price = last_buy.price.values[-1]
     else:
+
         lasts = api.get_trades(symbol, 5)
-        last_buy_price = lasts.price.values[-1]
-    atr_value = atr.values[-1]
-    atr_variation = float(factor * atr_value)
-    print('[{: <9}] Cost: {:12.8f}, StopLoss: {:12.8f}'.format(symbol, last_buy_price, last_buy_price - atr_variation))
+        last_buy_price = lasts.price[-1]
+
+    atr_value = atr[-1]
+    atr_variation = factor * atr_value
+
+    echo('[{: <9}] Cost: {:12.8f}, StopLoss: {:12.8f}'.format(symbol, last_buy_price, last_buy_price - atr_variation))
 
 
+@begin.subcommand
+@begin.convert(coin=str)
 def profit(coin):
     """
     Get current profit for a currency.
 
-    :param str coin: currency (example: BTC)
+    :param str coin: a currency or list of comma separated currencies (example: BTC,ETH)
     """
-    global api
-    print('[{}] Profit: {:+10.8f}, Cost:  {:10.8f}'.format(coin.upper(), *api.get_profit(coin)))
+
+    coin = str(coin).upper()
+
+    if 'NONE' not in coin:
+        if ',' in coin:
+            coin = [s for s in map(lambda s: s.upper().replace(' ', ''), coin.split(','))]
+        else:
+            coin = [coin.replace(' ', '')]
+        for c in coin:
+            echo('[{}] Profit: {:+10.8f}, Cost:  {:10.8f}'.format(c.upper(), *api.get_profit(c)))
+            tm.sleep(1)
+    else:
+        echo('ERROR: invalid coin {}'.format(coin), trm.red)
 
 
+@begin.subcommand
+@begin.convert(symbol=str, limit=int)
 def depth(symbol, limit=10):
     """
     Get order book data for a symbol.
 
-    :param str symbol: trade pair (example: BTC/USDT)
-    :param int limit: max rows to retrieve
+    :param str symbol: trade pair (example: BTC/USDT).
+    :param int limit: max rows to retrieve.
     """
-    global api
+
     ob = api.get_depth(symbol, limit=limit)
     base, quote = symbol.split('/')
 
     num_format = '9.8f'
     if 'USD' in quote:
         num_format = '9.3f'
-    table_config.update(floatfmt=num_format)
-    print(tabulate(ob.values, headers=DEPTH_HEADERS, disable_numparse=[1, 3], **table_config))
+    TABLE_CONFIG.update(floatfmt=num_format)
+    echo(tabulate(ob.values, headers=DEPTH_HEADERS, disable_numparse=[1, 3], **TABLE_CONFIG))
 
 
-def volume(limit=10, timeframe='1m', exchange='BTC'):
+@begin.subcommand
+@begin.convert(minvol=float, limit=int, exchange=str)
+def volume(min_vol=1000.0, limit=20, exchange='BTC'):
     """
     Show an desc volume sorted symbol list for 1 minute time-frame (useful to detect rising markets)
 
-    :param int limit: limit list entries (default 10)
-    :param str timeframe: time frame used. Accepted values: 1m, 3m, 5m, 15m, 1h, 2h, 4h, 1d (default 1m)
+    :param float min_vol: volume filter cutoff value (default 1000.0 BTC)
+    :param int limit: limit markets list
     :param str exchange: exchange used (default BTC)
     """
-    global api
-    tickers = api.get_tickers()
 
-    filtered = tickers.T.select(lambda v: v.split('/')[1] in [exchange]).sort_values('baseVolume', ascending=False).T
-
-    symbols = [k for k in filtered.T.keys()][:limit]
-    top_symbols = filtered.T[symbols].T
+    tickers = api.get_tickers(market=exchange).query('quoteVolume > {}'.format(min_vol))
+    tickers = tickers.sort_values('quoteVolume', ascending=False).T
+    if len(tickers) > limit:
+        tickers = tickers[:limit]
     table_data = list()
 
-    if timeframe is not None and timeframe not in '1m':
-        tf = timeframe
-    else:
-        tf = '1m'
+    tf = '1m'
 
-    for ts in top_symbols:
+    for num, ts in enumerate(tickers.keys()):
+        if num == 0: trm.clear()
 
-        ohlc = api.get_ohlc(ts, timeframe=tf)
-        ohlc['qvolume'] = ohlc.close * ohlc.volume
-        if not (ohlc.qvolume > 2.0)[-3:].all():
+        trm.pos(1, 1), trm.clearLine()
+        echo('({:d}/{:d}) Loading {} ...\n'.format(num + 1, len(tickers.columns), ts))
+        ohlc = api.get_ohlc(ts, timeframe=tf)  # type: pd.DataFrame
+
+        ohlc['qvolume'] = ohlc['close'] * ohlc['volume']
+
+        if (ohlc['qvolume'] > min_vol)[-3:].all():
             continue
-        vol0 = ohlc.qvolume[-1]
-        vol1 = ohlc.qvolume[-2]
-        vol2 = ohlc.qvolume[-3]
-        close = ohlc.close.apply(lambda s: '{:9.8f}'.format(s))
-        table_data.append([ts, vol0, vol1, vol2, close[-1]])
-    print(tabulate(table_data, headers=VOLUME_HEADERS, numalign='right', floatfmt='.3f', disable_numparse=[4]))
+        tickers[ts]['ohlc'] = ohlc
+        last = '{:9.8f}'.format(tickers[ts]['last'])
 
-    return filtered.T[symbols]
+        table_data.append([ts, tickers[ts]['ohlc']['qvolume'][-1], tickers[ts]['ohlc']['qvolume'][-2], last])
+
+    print(tabulate(table_data, headers=VOLUME_HEADERS, numalign='right', floatfmt='.3f'))  # disable_numparse=[3]))
 
 
-def main():
-    global api, verbose, json, csv
-    args = [arg for arg in sys.argv[1:]] if len(sys.argv[1:]) else []
+@begin.subcommand
+@begin.convert(symbols=str)
+def ticker(symbols):
+    """
+    Get ticker data for a symbol.
 
-    key, secret = os.getenv('BINANCE_KEY'), os.getenv('BINANCE_SECRET')
-    api = Panance() if any((key is None, secret is None, not len(key), not len(secret))) else Panance(key, secret)
-    json, csv, verbose = False, False, False
-    verbose = '--verbose' in args or '-v' in args
-    version = '--version' in args or '-V' in args
-    csv = '--csv' in args
-    if not csv:
-        json = '--json' in args
+    :param str symbols: trade pair (example: BTC/USDT).
+    """
 
-    if version:
-        print(clinance.__version__)
-        return 0
+    if ',' in symbols.replace(' ', ''):
+        symbols = [s for s in map(lambda s: str(s).upper(), symbols.split(','))]
     else:
-        defopt.run(
-            cost,
-            depth,
-            volume,
-            profit,
-            stoploss,
-            balance,
-            buy,
-            sell,
-            cancel,
-            open
-        )
-        return 0
+        symbols = [str(symbols).upper()]
+    tickers = api.get_tickers(symbols=symbols).T  # type: pd.DataFrame
+    data = list()
+    for symbol in symbols:
+        ticker = tickers[symbol].T  # type: pd.Series
+
+        if ticker is not None:
+            ticker['Symbol'] = symbol
+            ticker.drop(['change', 'baseVolume', 'previousClose', 'bidVolume', 'askVolume'], inplace=True)
+            ticker.T.index = ticker.T.index.map(lambda s: s.title() if isinstance(s, str) else s)
+            ticker['Volume'] = ticker.pop('Quotevolume')
+            ticker['VWAP'] = ticker.pop('Vwap')
+            ticker['Percent'] = round(ticker.pop('Percentage'), 2)
+            ticker['Volume'] = '{:9.2f}'.format(ticker.pop('Volume'))
+
+            ticker_dict = ticker.to_dict(into=OrderedDict)  # type: OrderedDict
+
+            ticker_dict.move_to_end('Symbol', last=False)
+            ticker_dict.move_to_end('Volume')
+            ticker_dict.move_to_end('Percent')
+
+            data.extend([ticker_dict])
+
+    fields_count = len(data[0].keys())
+    tbl = tabulate(data, headers='keys', numalign='right', floatfmt='9.8f',
+                   disable_numparse=[fields_count - 2, fields_count - 1])
+    echo(tbl)
+
+
+@begin.start(auto_convert=True, formatter_class=help_fmt)
+@begin.logging
+def main(csv=False, json=False, version=False):
+    """
+    Binance cryptocurrency exchange client from CLI
+    """
+    global api
+    if version: pass
+    if csv: pass
+    if json: pass
+    key = os.getenv('BINANCE_KEY')
+    secret = os.getenv('BINANCE_SECRET')
+    globals().update(api=Panance(key, secret) if key and secret else Panance())
