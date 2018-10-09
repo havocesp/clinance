@@ -3,7 +3,7 @@ A command line interface (CLI) client for Binance cryptocurrency exchange.
 
  * __Author__: Daniel J. Umpierrez
  * __Version__: 0.1.1
- * __License__: MIT
+ * __License__: UNLICENSE
 
 # TODO
  * [ ] Sub-command for check Binance availability.
