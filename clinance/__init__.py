@@ -19,7 +19,7 @@ if DEBUG:
 
 __version__ = '0.1.1'
 __author__ = 'Daniel J. Umpierrez'
-__license__ = 'MIT'
+__license__ = 'Changed license to UNLICENSE'
 __email__ = 'umpierrez@pm.me'
 __description__ = 'A command line interface (CLI) client for Binance cryptocurrency exchange.'
 __keywords__ = 'binance cli terminal console client trading altcoin exchange finance market bitcoin cryptocurrency ' \
