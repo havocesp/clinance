@@ -250,9 +250,9 @@ def ticker(symbols):
     tickers = api.get_tickers(symbols=symbols).T  # type: pd.DataFrame
     data = list()
     for symbol in symbols:
-        ticker = tickers[symbol].T  # type: pd.Series
+# type: pd.Series
 
-        if ticker is not None:
+        if (ticker := tickers[symbol].T) is not None:
             ticker['Symbol'] = symbol
             ticker.drop(['change', 'baseVolume', 'previousClose', 'bidVolume', 'askVolume'], inplace=True)
             ticker.T.index = ticker.T.index.map(lambda s: s.title() if isinstance(s, str) else s)
